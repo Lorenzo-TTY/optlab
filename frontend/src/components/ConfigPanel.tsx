@@ -48,7 +48,7 @@ export function ConfigPanel({ problem, disabled, message, onChange, onAsk }: Con
             inputMode="numeric"
             max={30}
             min={1}
-            type="number"
+            type="text"
             value={problem.variables.length}
             onChange={(event) => setVariableCount(Number(event.target.value))}
           />
@@ -61,7 +61,7 @@ export function ConfigPanel({ problem, disabled, message, onChange, onAsk }: Con
             inputMode="numeric"
             max={6}
             min={1}
-            type="number"
+            type="text"
             value={problem.objectives.length}
             onChange={(event) => setObjectiveCount(Number(event.target.value))}
           />
@@ -73,7 +73,7 @@ export function ConfigPanel({ problem, disabled, message, onChange, onAsk }: Con
             inputMode="numeric"
             max={16}
             min={1}
-            type="number"
+            type="text"
             value={problem.batchSize}
             onChange={(event) =>
               onChange({ ...problem, batchSize: clampInteger(Number(event.target.value), 1, 16) })
@@ -86,7 +86,7 @@ export function ConfigPanel({ problem, disabled, message, onChange, onAsk }: Con
             autoComplete="off"
             inputMode="numeric"
             min={0}
-            type="number"
+            type="text"
             value={problem.budget.seed}
             onChange={(event) =>
               onChange({ ...problem, budget: { ...problem.budget, seed: clampInteger(Number(event.target.value), 0, 999999) } })

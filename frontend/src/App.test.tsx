@@ -69,8 +69,8 @@ describe("OptLab ask/tell UI", () => {
     render(<App />);
 
     expect(screen.getByRole("heading", { name: "OptLab" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Parameter dimensions")).toHaveValue(2);
-    expect(screen.getByLabelText("Objective dimensions")).toHaveValue(2);
+    expect(screen.getByLabelText("Parameter dimensions")).toHaveValue("2");
+    expect(screen.getByLabelText("Objective dimensions")).toHaveValue("2");
 
     const variableTable = screen.getByRole("table", { name: "Parameter definition table" });
     expect(within(variableTable).getByDisplayValue("x1")).toBeInTheDocument();
