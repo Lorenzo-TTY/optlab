@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+backend/.venv/
+
+# Node / Vite
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/tsconfig.tsbuildinfo
+
+# Local runtime artifacts
+*.log
+backend-server.out.log
+backend-server.err.log
+frontend-server.out.log
+frontend-server.err.log
+.playwright-mcp/
+
+# Local databases and temporary files
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/
