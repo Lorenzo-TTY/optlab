@@ -26,14 +26,14 @@ export function StatusPanel({ status, advisor, observations, pending, completedR
         </div>
         <div>
           <span className="metric-label">Algorithm</span>
-          <strong className="status-value">{advisor?.algorithm ?? "waiting"}</strong>
+          <strong className="status-value">{advisor?.algorithm ?? "optional"}</strong>
         </div>
       </div>
 
       <div className="metric-grid">
         <Metric label="Status" value={status} />
-        <Metric label="Observed" value={observations} />
-        <Metric label="Pending" value={pending} />
+        <Metric label="Saved" value={observations} />
+        <Metric label="Editable" value={pending} />
         <Metric label="Complete" value={completedRows} />
       </div>
     </section>

@@ -3,9 +3,9 @@
 OptLab v1 now separates two use cases:
 
 - Automated evaluator jobs keep the existing evolutionary path: GA for one objective, NSGA-II for two to three objectives, NSGA-III for four to six objectives, with RVEA available explicitly for four to six objective many-objective runs.
-- Human or engineering-loop optimization uses an ask/tell advisor. The advisor first proposes Latin-hypercube candidates; after the initial design is observed, it switches to a ParEGO-style random Chebyshev scalarization ranked by an inverse-distance surrogate and diversity penalty.
+- Human or engineering-loop optimization uses an ask/tell advisor. User-entered observations are the primary dataset; advisor suggestions are optional editable references. The advisor first proposes Latin-hypercube candidates; after the initial design is observed, it switches to a ParEGO-style random Chebyshev scalarization ranked by an inverse-distance surrogate and diversity penalty.
 
-The ask/tell interface is intentionally stateless. Each request sends the complete `ProblemSpec`, current observations, batch size, and seed to `/api/advisor/suggest`. This keeps refresh/recovery simple and makes deterministic replay testable.
+The ask/tell interface is intentionally stateless. Each request sends the complete `ProblemSpec`, current saved observations, batch size, and seed to `/api/advisor/suggest`. The user may add any number of manual rows between suggestion requests; unsaved rows are not sent to the advisor. This keeps refresh/recovery simple and makes deterministic replay testable.
 
 Research-aligned roadmap:
 

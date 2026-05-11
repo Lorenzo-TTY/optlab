@@ -114,7 +114,8 @@ button {
 .field select,
 .compact-table input,
 .compact-table select,
-.results-panel input {
+.results-panel input,
+.results-panel select {
   width: 100%;
   border: 1px solid #cad4e1;
   border-radius: 6px;
@@ -129,6 +130,7 @@ button {
 .compact-table input:focus-visible,
 .compact-table select:focus-visible,
 .results-panel input:focus-visible,
+.results-panel select:focus-visible,
 button:focus-visible {
   border-color: #2f6df6;
   box-shadow: 0 0 0 3px rgba(47, 109, 246, 0.14);
@@ -166,7 +168,9 @@ button:focus-visible {
 .secondary-button:disabled,
 .field input:disabled,
 .compact-table input:disabled,
-.compact-table select:disabled {
+.compact-table select:disabled,
+.results-panel input:disabled,
+.results-panel select:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
@@ -198,8 +202,32 @@ button:focus-visible {
   min-width: 0;
 }
 
-.results-panel input {
+.results-panel input,
+.results-panel select {
   min-width: 96px;
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.inline-field {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  min-width: 104px;
+  color: #66758a;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.inline-field input {
+  min-height: 40px;
+  padding: 0 10px;
 }
 
 .connection-dot {
@@ -357,6 +385,18 @@ td {
   text-overflow: ellipsis;
 }
 
+.row-source {
+  display: inline-flex;
+  margin-left: 8px;
+  border: 1px solid #d8e1ec;
+  border-radius: 999px;
+  padding: 1px 6px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .observation-strip {
   display: flex;
   align-items: baseline;
@@ -369,6 +409,18 @@ th {
   font-size: 12px;
   font-weight: 760;
   text-transform: uppercase;
+}
+
+.results-panel th:first-child,
+.results-panel td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: #ffffff;
+}
+
+.results-panel th:first-child {
+  z-index: 2;
 }
 
 .tag {
@@ -388,6 +440,11 @@ th {
 .tag.warning {
   background: #fef3c7;
   color: #92400e;
+}
+
+.tag.danger {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 @keyframes point-in {
@@ -416,6 +473,12 @@ th {
   .metric-grid,
   .definition-stack {
     grid-template-columns: 1fr;
+  }
+
+  .section-heading,
+  .table-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .panel {

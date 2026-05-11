@@ -112,3 +112,81 @@ def test_advisor_rejects_observations_missing_objectives() -> None:
             batch_size=1,
             seed=1,
         )
+
+
+def test_manual_observations_with_arbitrary_ids_feed_surrogate_deterministically() -> None:
+    problem = make_problem(n_var=2, n_obj=2)
+    observations = [
+        {
+            "candidateId": f"manual_{index:06d}",
+            "variables": {"x1": -5.0 + index, "x2": 5.0 - index},
+            "objectives": {"f1": float(index), "f2": -float(index)},
+            "constraints": {},
+        }
+        for index in range(10)
+    ]
+
+    request = AdvisorRequest(problem=problem, observations=observations, batch_size=3, seed=19)
+
+    first = suggest_candidates(request)
+    second = suggest_candidates(request)
+
+    assert first.phase == "surrogate"
+    assert first.algorithm == "parego-idw"
+    assert first.suggestions == second.suggestions
+    assert len(first.suggestions) == 3
+
+
+def test_advisor_rejects_empty_observation_ids_and_out_of_range_variables() -> None:
+    problem = make_problem(n_var=2, n_obj=2)
+    with pytest.raises(ValueError, match="candidateId must not be empty"):
+        AdvisorRequest(
+            problem=problem,
+            observations=[
+                {
+                    "candidateId": " ",
+                    "variables": {"x1": 0.0, "x2": 0.0},
+                    "objectives": {"f1": 1.0, "f2": 1.0},
+                }
+            ],
+            batch_size=1,
+            seed=1,
+        )
+
+    with pytest.raises(ValueError, match="within"):
+        AdvisorRequest(
+            problem=problem,
+            observations=[
+                {
+                    "candidateId": "manual_out_of_bounds",
+                    "variables": {"x1": 10.0, "x2": 0.0},
+                    "objectives": {"f1": 1.0, "f2": 1.0},
+                }
+            ],
+            batch_size=1,
+            seed=1,
+        )
+
+
+def test_advisor_normalizes_string_boolean_observations() -> None:
+    problem = ProblemSpec(
+        variables=[VariableSpec(name="enabled", type="bool")],
+        objectives=[ObjectiveSpec(name="f1")],
+        evaluator=EvaluatorSpec(type="builtin", name="manual"),
+        budget=BudgetSpec(max_evals=64, seed=17),
+    )
+
+    request = AdvisorRequest(
+        problem=problem,
+        observations=[
+            {
+                "candidateId": "manual_bool_false",
+                "variables": {"enabled": "false"},
+                "objectives": {"f1": 1.0},
+            }
+        ],
+        batch_size=1,
+        seed=1,
+    )
+
+    assert request.observations[0].variables["enabled"] is False

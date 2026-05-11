@@ -51,9 +51,10 @@ export interface CandidateResult {
 
 export interface SuggestionRow {
   candidateId: string;
+  source: "advisor" | "manual";
   variables: Record<string, string | number | boolean>;
   objectives: Record<string, string>;
-  status: "suggested" | "complete" | "submitted" | "invalid";
+  status: "draft" | "suggested" | "complete" | "submitted" | "invalid";
   reason: string;
 }
 

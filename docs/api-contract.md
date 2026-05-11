@@ -85,10 +85,12 @@ The backend API is expected to expose these main endpoints:
 
 - `POST /api/configs/validate`: validate a problem config and return
   `{valid: true, summary: ...}` for accepted configs.
-- `POST /api/advisor/suggest`: ask the interactive advisor for the next
+- `POST /api/advisor/suggest`: optionally ask the interactive advisor for
   candidate variables. The request is stateless and includes `{problem,
-  observations, batchSize, seed}`. The response contains `{phase, algorithm,
-  suggestions, visualization}`.
+  observations, batchSize, seed}`; `observations` may contain user-entered rows
+  with arbitrary non-empty `candidateId` values, not only previous advisor
+  suggestions. The response contains `{phase, algorithm, suggestions,
+  visualization}`.
 - `POST /api/jobs`: create and start an optimization job. Returns `{jobId: ...}`.
 - `GET /api/jobs/{job_id}`: return job status, evaluation count, and Pareto
   count. Terminal statuses are `completed`, `failed`, and `cancelled`.
@@ -113,7 +115,7 @@ Advisor request example:
   },
   "observations": [
     {
-      "candidateId": "suggest_000001",
+      "candidateId": "manual_000001",
       "variables": {"x1": 0.42},
       "objectives": {"f1": 0.12, "f2": 0.88},
       "constraints": {},

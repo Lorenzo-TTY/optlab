@@ -35,7 +35,7 @@ export function ConfigPanel({ problem, disabled, message, onChange, onAsk }: Con
       <div className="section-heading">
         <div>
           <h2 id="config-title">Problem Setup</h2>
-          <p>Set dimensions first, then define every parameter and objective row explicitly.</p>
+          <p>Set dimensions first, then define every parameter and objective before entering or importing data rows.</p>
         </div>
       </div>
 
@@ -48,6 +48,7 @@ export function ConfigPanel({ problem, disabled, message, onChange, onAsk }: Con
             inputMode="numeric"
             max={30}
             min={1}
+            disabled={disabled}
             type="text"
             value={problem.variables.length}
             onChange={(event) => setVariableCount(Number(event.target.value))}
@@ -61,6 +62,7 @@ export function ConfigPanel({ problem, disabled, message, onChange, onAsk }: Con
             inputMode="numeric"
             max={6}
             min={1}
+            disabled={disabled}
             type="text"
             value={problem.objectives.length}
             onChange={(event) => setObjectiveCount(Number(event.target.value))}
@@ -73,6 +75,7 @@ export function ConfigPanel({ problem, disabled, message, onChange, onAsk }: Con
             inputMode="numeric"
             max={16}
             min={1}
+            disabled={disabled}
             type="text"
             value={problem.batchSize}
             onChange={(event) =>
@@ -86,6 +89,7 @@ export function ConfigPanel({ problem, disabled, message, onChange, onAsk }: Con
             autoComplete="off"
             inputMode="numeric"
             min={0}
+            disabled={disabled}
             type="text"
             value={problem.budget.seed}
             onChange={(event) =>
@@ -96,25 +100,27 @@ export function ConfigPanel({ problem, disabled, message, onChange, onAsk }: Con
       </div>
 
       <div className="definition-stack">
-        <VariableDefinitionTable variables={problem.variables} onChange={updateVariable} />
-        <ObjectiveDefinitionTable objectives={problem.objectives} onChange={updateObjective} />
+        <VariableDefinitionTable disabled={disabled} variables={problem.variables} onChange={updateVariable} />
+        <ObjectiveDefinitionTable disabled={disabled} objectives={problem.objectives} onChange={updateObjective} />
       </div>
 
       <div className="action-row">
         <button className="primary-button" disabled={disabled} type="button" onClick={onAsk}>
-          Get algorithm suggestion
+          Get optional algorithm suggestion
         </button>
       </div>
 
-      <p className="validation-note">{message}</p>
+      <p className="validation-note" aria-live="polite">{message}</p>
     </section>
   );
 }
 
 function VariableDefinitionTable({
+  disabled,
   variables,
   onChange,
 }: {
+  disabled: boolean;
   variables: VariableDefinition[];
   onChange: (index: number, patch: Partial<VariableDefinition>) => void;
 }) {
@@ -138,6 +144,7 @@ function VariableDefinitionTable({
                 <td>
                   <input
                     aria-label={`Parameter ${index + 1} name`}
+                    disabled={disabled}
                     value={variable.name}
                     onChange={(event) => onChange(index, { name: event.target.value })}
                   />
@@ -145,6 +152,7 @@ function VariableDefinitionTable({
                 <td>
                   <select
                     aria-label={`Parameter ${index + 1} type`}
+                    disabled={disabled}
                     value={variable.type}
                     onChange={(event) => onChange(index, { type: event.target.value as VariableType })}
                   >
@@ -157,7 +165,7 @@ function VariableDefinitionTable({
                 <td>
                   <input
                     aria-label={`${variable.name} lower`}
-                    disabled={variable.type === "bool" || variable.type === "categorical"}
+                    disabled={disabled || variable.type === "bool" || variable.type === "categorical"}
                     type="number"
                     value={variable.lower ?? 0}
                     onChange={(event) => onChange(index, { lower: Number(event.target.value) })}
@@ -166,7 +174,7 @@ function VariableDefinitionTable({
                 <td>
                   <input
                     aria-label={`${variable.name} upper`}
-                    disabled={variable.type === "bool" || variable.type === "categorical"}
+                    disabled={disabled || variable.type === "bool" || variable.type === "categorical"}
                     type="number"
                     value={variable.upper ?? 1}
                     onChange={(event) => onChange(index, { upper: Number(event.target.value) })}
@@ -175,7 +183,7 @@ function VariableDefinitionTable({
                 <td>
                   <select
                     aria-label={`${variable.name} scale`}
-                    disabled={variable.type === "bool" || variable.type === "categorical"}
+                    disabled={disabled || variable.type === "bool" || variable.type === "categorical"}
                     value={variable.scale}
                     onChange={(event) => onChange(index, { scale: event.target.value as "linear" | "log" })}
                   >
@@ -193,9 +201,11 @@ function VariableDefinitionTable({
 }
 
 function ObjectiveDefinitionTable({
+  disabled,
   objectives,
   onChange,
 }: {
+  disabled: boolean;
   objectives: ObjectiveDefinition[];
   onChange: (index: number, patch: Partial<ObjectiveDefinition>) => void;
 }) {
@@ -218,6 +228,7 @@ function ObjectiveDefinitionTable({
                 <td>
                   <input
                     aria-label={`Objective ${index + 1} name`}
+                    disabled={disabled}
                     value={objective.name}
                     onChange={(event) => onChange(index, { name: event.target.value })}
                   />
@@ -225,6 +236,7 @@ function ObjectiveDefinitionTable({
                 <td>
                   <select
                     aria-label={`${objective.name} direction`}
+                    disabled={disabled}
                     value={objective.direction}
                     onChange={(event) => onChange(index, { direction: event.target.value as "min" | "max" })}
                   >
@@ -235,6 +247,7 @@ function ObjectiveDefinitionTable({
                 <td>
                   <input
                     aria-label={`${objective.name} unit`}
+                    disabled={disabled}
                     value={objective.unit ?? ""}
                     onChange={(event) => onChange(index, { unit: event.target.value })}
                   />
@@ -242,6 +255,7 @@ function ObjectiveDefinitionTable({
                 <td>
                   <input
                     aria-label={`${objective.name} threshold`}
+                    disabled={disabled}
                     type="number"
                     value={objective.threshold ?? ""}
                     onChange={(event) =>

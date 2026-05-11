@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .archive import dominates
 from .encoding import encode_variables, decode_vector
-from .models import EvaluationResult, ProblemSpec
+from .models import EvaluationResult, ProblemSpec, VariableSpec
 
 
 class AdvisorObservation(BaseModel):
@@ -18,6 +18,14 @@ class AdvisorObservation(BaseModel):
     objectives: dict[str, float]
     constraints: dict[str, float] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("candidate_id")
+    @classmethod
+    def candidate_id_must_not_be_empty(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("candidateId must not be empty")
+        return value
 
 
 class AdvisorRequest(BaseModel):
@@ -35,6 +43,7 @@ class AdvisorRequest(BaseModel):
             if observation.candidate_id in seen_ids:
                 raise ValueError(f"duplicate observation '{observation.candidate_id}'")
             seen_ids.add(observation.candidate_id)
+            _validate_observation_variables(self.problem, observation)
             encode_variables(self.problem.variables, observation.variables)
             EvaluationResult(
                 objectives=observation.objectives,
@@ -266,3 +275,40 @@ def non_dominated_observations(request: AdvisorRequest) -> list[AdvisorObservati
         if not any(other != index and dominates(values, minimized[index]) for other, values in enumerate(minimized)):
             front.append(observation)
     return front
+
+
+def _validate_observation_variables(problem: ProblemSpec, observation: AdvisorObservation) -> None:
+    for variable in problem.variables:
+        if variable.name not in observation.variables:
+            if variable.default is None:
+                raise ValueError(f"missing variable '{variable.name}'")
+            observation.variables[variable.name] = variable.default
+        observation.variables[variable.name] = _normalize_observation_variable(variable, observation.variables[variable.name])
+
+
+def _normalize_observation_variable(variable: VariableSpec, value: Any) -> Any:
+    if variable.type == "bool":
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str) and value.strip().lower() in {"true", "false"}:
+            return value.strip().lower() == "true"
+        raise ValueError(f"invalid boolean value for '{variable.name}'")
+
+    if variable.type == "categorical":
+        choices = list(variable.choices or [])
+        if value not in choices:
+            raise ValueError(f"invalid choice for '{variable.name}'")
+        return value
+
+    number = float(value)
+    if number != number or number in {float("inf"), float("-inf")}:
+        raise ValueError(f"variable '{variable.name}' must be finite")
+    lower = float(variable.lower)
+    upper = float(variable.upper)
+    if number < lower or number > upper:
+        raise ValueError(f"variable '{variable.name}' must be within [{lower}, {upper}]")
+    if variable.type == "int":
+        if not number.is_integer():
+            raise ValueError(f"integer variable '{variable.name}' requires an integer value")
+        return int(number)
+    return number
