@@ -101,7 +101,11 @@ function collectObjectiveNames(candidates: CandidateResult[], fallback: string[]
   for (const candidate of candidates) {
     Object.keys(candidate.objectives).forEach((name) => names.add(name));
   }
-  return names.size > 0 ? [...names].sort() : fallback;
+  if (fallback.length > 0) {
+    const extras = [...names].filter((name) => !fallback.includes(name)).sort();
+    return [...fallback, ...extras];
+  }
+  return [...names];
 }
 
 function buildObjectiveTrace(candidates: CandidateResult[], objectiveNames: string[]): Data[] {

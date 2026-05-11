@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 
 import { suggestCandidates } from "./api";
 import { ConfigPanel } from "./components/ConfigPanel";
+import { OptimizationResults } from "./components/OptimizationResults";
 import { ParetoView } from "./components/ParetoView";
 import { ResultsTable } from "./components/ResultsTable";
 import { StatusPanel } from "./components/StatusPanel";
@@ -65,12 +66,7 @@ export default function App() {
   };
 
   const handleAsk = async () => {
-    const committed = commitRows(rows, observations, problem);
-    if (committed.count > 0) {
-      setObservations(committed.observations);
-      setRows(committed.rows);
-    }
-    await askWithObservations(committed.observations, committed.rows);
+    await askWithObservations(observations, rows);
   };
 
   const handleVariableChange = (candidateId: string, variableName: string, value: string) => {
@@ -150,6 +146,7 @@ export default function App() {
           status={status}
         />
         <ParetoView candidates={observations} objectives={problem.objectives} policy={advisor?.visualization ?? null} />
+        <OptimizationResults candidates={observations} objectives={problem.objectives} rows={rows} />
         <ResultsTable
           objectives={problem.objectives}
           observations={observations}

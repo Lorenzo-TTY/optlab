@@ -72,7 +72,7 @@ export interface AdvisorVisualization {
 
 export interface AdvisorSuggestResponse {
   phase: "initial" | "surrogate";
-  algorithm: "lhs" | "parego-idw";
+  algorithm: "sobol-lhs-maximin" | "ensemble-mobo";
   suggestions: AdvisorSuggestion[];
   visualization: AdvisorVisualization;
 }
