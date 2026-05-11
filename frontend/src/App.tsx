@@ -1,11 +1,21 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { suggestCandidates } from "./api";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { OptimizationResults } from "./components/OptimizationResults";
 import { ParetoView } from "./components/ParetoView";
+import { ProjectSidebar } from "./components/ProjectSidebar";
 import { ResultsTable } from "./components/ResultsTable";
 import { StatusPanel } from "./components/StatusPanel";
+import {
+  createProject,
+  loadActiveProjectId,
+  loadProjects,
+  saveActiveProjectId,
+  saveProjects,
+  touchProject,
+  type OptimizationProject,
+} from "./projectStorage";
 import type {
   AdvisorStatus,
   AdvisorSuggestResponse,
@@ -33,15 +43,80 @@ const initialProblem: ProblemDraft = {
 };
 
 export default function App() {
-  const [problem, setProblem] = useState<ProblemDraft>(initialProblem);
+  const [projects, setProjects] = useState<OptimizationProject[]>(() => loadProjects(initialProblem));
+  const [activeProjectId, setActiveProjectId] = useState(() => loadActiveProjectId(projects));
+  const activeProject = projects.find((project) => project.id === activeProjectId) ?? projects[0];
+  const [problem, setProblem] = useState<ProblemDraft>(activeProject.problem);
   const [status, setStatus] = useState<AdvisorStatus>("idle");
-  const [advisor, setAdvisor] = useState<AdvisorSuggestResponse | null>(null);
-  const [rows, setRows] = useState<SuggestionRow[]>([]);
-  const [observations, setObservations] = useState<CandidateResult[]>([]);
+  const [advisor, setAdvisor] = useState<AdvisorSuggestResponse | null>(activeProject.advisor);
+  const [rows, setRows] = useState<SuggestionRow[]>(activeProject.rows);
+  const [observations, setObservations] = useState<CandidateResult[]>(activeProject.observations);
   const [message, setMessage] = useState("Define dimensions, then add your own data rows or request optional algorithm suggestions.");
 
   const completedRows = useMemo(() => rows.filter((row) => row.status === "complete"), [rows]);
   const editableRows = rows.filter((row) => row.status !== "submitted").length;
+
+  useEffect(() => {
+    if (!saveProjects(projects)) {
+      setMessage("Local project save failed. Current work remains in memory, but this browser did not persist it.");
+    }
+  }, [projects]);
+
+  useEffect(() => {
+    if (!saveActiveProjectId(activeProjectId)) {
+      setMessage("Local project save failed. Current work remains in memory, but this browser did not persist it.");
+    }
+  }, [activeProjectId]);
+
+  useEffect(() => {
+    updateActiveProject({ problem, rows, observations, advisor });
+  }, [problem, rows, observations, advisor]);
+
+  const selectProject = (projectId: string) => {
+    const nextProject = projects.find((project) => project.id === projectId);
+    if (!nextProject) {
+      return;
+    }
+    setActiveProjectId(projectId);
+    setProblem(nextProject.problem);
+    setRows(nextProject.rows);
+    setObservations(nextProject.observations);
+    setAdvisor(nextProject.advisor);
+    setStatus("idle");
+    setMessage(`Loaded ${nextProject.name}. Continue entering data or request optional suggestions.`);
+  };
+
+  const updateActiveProject = (patch: Partial<OptimizationProject>) => {
+    setProjects((current) => updateProjectList(current, activeProjectId, patch));
+  };
+
+  const handleCreateProject = () => {
+    const nextProject = createProject(initialProblem, `Project ${projects.length + 1}`);
+    setProjects((current) => [...current, nextProject]);
+    setActiveProjectId(nextProject.id);
+    setProblem(nextProject.problem);
+    setRows([]);
+    setObservations([]);
+    setAdvisor(null);
+    setStatus("idle");
+    setMessage("New optimization project created. Define the problem, then add rows or request optional suggestions.");
+  };
+
+  const handleRenameProject = (projectId: string, name: string) => {
+    setProjects((current) =>
+      current.map((project) => (project.id === projectId ? touchProject({ ...project, name }) : project)),
+    );
+  };
+
+  const handleSaveProject = () => {
+    const updatedProjects = updateProjectList(projects, activeProjectId, { problem, rows, observations, advisor });
+    setProjects(updatedProjects);
+    if (saveProjects(updatedProjects) && saveActiveProjectId(activeProjectId)) {
+      setMessage(`${activeProject.name || "Untitled project"} saved locally. It will be restored when you reopen this browser.`);
+      return;
+    }
+    setMessage("Local project save failed. Current work remains in memory, but this browser did not persist it.");
+  };
 
   const askWithObservations = async (nextObservations: CandidateResult[], baseRows: SuggestionRow[]) => {
     setStatus("asking");
@@ -123,41 +198,51 @@ export default function App() {
         </div>
       </header>
 
-      <div className="dashboard-grid">
-        <ConfigPanel
-          disabled={status === "asking"}
-          message={message}
-          problem={problem}
-          onAsk={handleAsk}
-          onChange={(nextProblem) => {
-            setProblem(nextProblem);
-            setAdvisor(null);
-            setRows([]);
-            setObservations([]);
-            setStatus("idle");
-            setMessage("Problem definition changed; add fresh data rows or request optional suggestions.");
-          }}
+      <div className="workspace-layout">
+        <ProjectSidebar
+          activeProjectId={activeProjectId}
+          projects={projects}
+          onCreate={handleCreateProject}
+          onRename={handleRenameProject}
+          onSave={handleSaveProject}
+          onSelect={selectProject}
         />
-        <StatusPanel
-          advisor={advisor}
-          completedRows={completedRows.length}
-          observations={observations.length}
-          pending={editableRows}
-          status={status}
-        />
-        <ParetoView candidates={observations} objectives={problem.objectives} policy={advisor?.visualization ?? null} />
-        <OptimizationResults candidates={observations} objectives={problem.objectives} rows={rows} />
-        <ResultsTable
-          objectives={problem.objectives}
-          observations={observations}
-          rows={rows}
-          variables={problem.variables}
-          disabled={status === "asking"}
-          onAddManualRows={handleAddManualRows}
-          onObjectiveChange={handleObjectiveChange}
-          onSaveRows={handleSaveRows}
-          onVariableChange={handleVariableChange}
-        />
+        <div className="dashboard-grid">
+          <ConfigPanel
+            disabled={status === "asking"}
+            message={message}
+            problem={problem}
+            onAsk={handleAsk}
+            onChange={(nextProblem) => {
+              setProblem(nextProblem);
+              setAdvisor(null);
+              setRows([]);
+              setObservations([]);
+              setStatus("idle");
+              setMessage("Problem definition changed; add fresh data rows or request optional suggestions.");
+            }}
+          />
+          <StatusPanel
+            advisor={advisor}
+            completedRows={completedRows.length}
+            observations={observations.length}
+            pending={editableRows}
+            status={status}
+          />
+          <ParetoView candidates={observations} objectives={problem.objectives} policy={advisor?.visualization ?? null} />
+          <OptimizationResults candidates={observations} objectives={problem.objectives} rows={rows} />
+          <ResultsTable
+            objectives={problem.objectives}
+            observations={observations}
+            rows={rows}
+            variables={problem.variables}
+            disabled={status === "asking"}
+            onAddManualRows={handleAddManualRows}
+            onObjectiveChange={handleObjectiveChange}
+            onSaveRows={handleSaveRows}
+            onVariableChange={handleVariableChange}
+          />
+        </div>
       </div>
     </main>
   );
@@ -185,6 +270,21 @@ function rowStatus(
     return "invalid";
   }
   return source === "advisor" ? "suggested" : "draft";
+}
+
+function updateProjectList(
+  projects: OptimizationProject[],
+  activeProjectId: string,
+  patch: Partial<OptimizationProject>,
+) {
+  return projects.map((project) =>
+    project.id === activeProjectId
+      ? touchProject({
+          ...project,
+          ...patch,
+        })
+      : project,
+  );
 }
 
 function commitRows(rows: SuggestionRow[], observations: CandidateResult[], problem: ProblemDraft) {

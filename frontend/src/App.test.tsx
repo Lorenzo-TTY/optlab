@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
+import { ACTIVE_PROJECT_STORAGE_KEY, PROJECT_STORAGE_KEY } from "./projectStorage";
 
 vi.mock("react-plotly.js/factory", () => ({
   default: () =>
@@ -57,6 +58,7 @@ const secondAdvisorResponse = {
 
 describe("OptLab ask/tell UI", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     vi.stubGlobal(
       "fetch",
       vi
@@ -67,6 +69,7 @@ describe("OptLab ask/tell UI", () => {
   });
 
   afterEach(() => {
+    window.localStorage.clear();
     vi.unstubAllGlobals();
   });
 
@@ -168,6 +171,74 @@ describe("OptLab ask/tell UI", () => {
     const body = JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body));
     expect(body.observations).toEqual([]);
     expect(within(candidateRow("manual_000001")).getByText("complete")).toBeInTheDocument();
+  });
+
+  it("creates separate optimization projects and restores the selected project after reload", async () => {
+    const { unmount } = render(<App />);
+
+    await userEvent.clear(screen.getByLabelText("Project name"));
+    await userEvent.type(screen.getByLabelText("Project name"), "Wing sweep");
+    await userEvent.click(screen.getByRole("button", { name: "Add manual rows" }));
+    await fillCandidateRow("manual_000001", {
+      x1: "0.2",
+      x2: "0.8",
+      f1: "0.12",
+      f2: "0.88",
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Save completed rows" }));
+    expectSavedObservations(1);
+
+    await userEvent.click(screen.getByRole("button", { name: "New project" }));
+    expect(screen.getByLabelText("Project name")).toHaveValue("Project 2");
+    expectSavedObservations(0);
+    expect(screen.queryByText("manual_000001")).not.toBeInTheDocument();
+
+    await userEvent.click(projectButton("Wing sweep"));
+    expectSavedObservations(1);
+    expect(within(candidateRow("manual_000001")).getByText("submitted")).toBeInTheDocument();
+
+    await userEvent.click(projectButton("Project 2"));
+    await userEvent.clear(screen.getByLabelText("Project name"));
+    await userEvent.type(screen.getByLabelText("Project name"), "Thermal sweep");
+    await userEvent.click(screen.getByRole("button", { name: "Add manual rows" }));
+    await userEvent.type(screen.getByLabelText("x1 for manual_000001"), "0.4");
+    await userEvent.type(screen.getByLabelText("x2 for manual_000001"), "0.6");
+
+    await waitFor(() => expect(window.localStorage.getItem(ACTIVE_PROJECT_STORAGE_KEY)).toBeTruthy());
+    unmount();
+    render(<App />);
+
+    expect(screen.getByLabelText("Project name")).toHaveValue("Thermal sweep");
+    expectSavedObservations(0);
+    expect(screen.getByLabelText("x1 for manual_000001")).toHaveValue("0.4");
+    expect(screen.getByLabelText("x2 for manual_000001")).toHaveValue("0.6");
+    expect(within(candidateRow("manual_000001")).getByText("draft")).toBeInTheDocument();
+  });
+
+  it("falls back to a fresh project when stored project data is corrupt", () => {
+    window.localStorage.setItem(PROJECT_STORAGE_KEY, "{not valid json");
+    window.localStorage.setItem(ACTIVE_PROJECT_STORAGE_KEY, "missing_project");
+
+    render(<App />);
+
+    expect(screen.getByLabelText("Project name")).toHaveValue("Project 1");
+    expectSavedObservations(0);
+    expect(screen.getByText("No data rows yet. Add manual rows or request optional algorithm suggestions.")).toBeInTheDocument();
+  });
+
+  it("keeps the workbench usable when browser project storage fails", async () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded");
+    });
+
+    render(<App />);
+
+    expect(await screen.findByText("Local project save failed. Current work remains in memory, but this browser did not persist it.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Add manual rows" }));
+    expect(await within(resultsEntryTable()).findByText("manual_000001")).toBeInTheDocument();
+    expect(screen.getByLabelText("x1 for manual_000001")).toBeEnabled();
+
+    setItemSpy.mockRestore();
   });
 
   it("displays optimization result summary for saved manual rows and active advisor recommendations", async () => {
@@ -330,4 +401,13 @@ function recommendationStrip(summary: HTMLElement) {
     throw new Error("Could not find recommendation strip");
   }
   return strip;
+}
+
+function projectButton(name: string) {
+  const label = screen.getByText(name);
+  const button = label.closest("button");
+  if (!button) {
+    throw new Error(`Could not find project button for ${name}`);
+  }
+  return button;
 }
