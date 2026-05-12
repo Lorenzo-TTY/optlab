@@ -173,6 +173,53 @@ describe("OptLab ask/tell UI", () => {
     expect(within(candidateRow("manual_000001")).getByText("complete")).toBeInTheDocument();
   });
 
+  it("pastes Excel-style rows into the ask/tell workbench and appends missing rows", async () => {
+    render(<App />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Add manual rows" }));
+    pasteSpreadsheet(
+      screen.getByLabelText("x1 for manual_000001"),
+      "0.2\t0.8\t0.12\t0.88\n0.6\t0.4\t0.2\t0.2",
+    );
+
+    expect(within(candidateRow("manual_000001")).getByText("complete")).toBeInTheDocument();
+    expect(within(candidateRow("manual_000002")).getByText("complete")).toBeInTheDocument();
+    expect(screen.getByLabelText("x1 for manual_000002")).toHaveValue("0.6");
+    expect(screen.getByLabelText("f2 for manual_000002")).toHaveValue("0.2");
+
+    await userEvent.click(screen.getByRole("button", { name: "Save completed rows" }));
+
+    expectSavedObservations(2);
+    expect(within(candidateRow("manual_000001")).getByText("submitted")).toBeInTheDocument();
+    expect(within(candidateRow("manual_000002")).getByText("submitted")).toBeInTheDocument();
+  });
+
+  it("pastes spreadsheet rows into parameter and objective definition tables", () => {
+    render(<App />);
+
+    pasteSpreadsheet(
+      screen.getByLabelText("Parameter 1 name"),
+      "temperature\tfloat\t10\t100\tlinear\npressure\tfloat\t1\t5\tlog",
+    );
+    pasteSpreadsheet(
+      screen.getByLabelText("Objective 1 name"),
+      "cost\tmin\tUSD\t\nquality\tmax\tpts\t0.8",
+    );
+
+    expect(screen.getByLabelText("Parameter dimensions")).toHaveValue("2");
+    expect(screen.getByLabelText("temperature lower")).toHaveValue(10);
+    expect(screen.getByLabelText("temperature upper")).toHaveValue(100);
+    expect(screen.getByLabelText("pressure lower")).toHaveValue(1);
+    expect(screen.getByLabelText("pressure upper")).toHaveValue(5);
+    expect(screen.getByLabelText("pressure scale")).toHaveValue("log");
+    expect(screen.getByLabelText("Objective dimensions")).toHaveValue("2");
+    expect(screen.getByLabelText("cost direction")).toHaveValue("min");
+    expect(screen.getByLabelText("cost unit")).toHaveValue("USD");
+    expect(screen.getByLabelText("quality direction")).toHaveValue("max");
+    expect(screen.getByLabelText("quality unit")).toHaveValue("pts");
+    expect(screen.getByLabelText("quality threshold")).toHaveValue(0.8);
+  });
+
   it("creates separate optimization projects and restores the selected project after reload", async () => {
     const { unmount } = render(<App />);
 
@@ -401,6 +448,14 @@ function recommendationStrip(summary: HTMLElement) {
     throw new Error("Could not find recommendation strip");
   }
   return strip;
+}
+
+function pasteSpreadsheet(target: HTMLElement, text: string) {
+  fireEvent.paste(target, {
+    clipboardData: {
+      getData: () => text,
+    },
+  });
 }
 
 function projectButton(name: string) {

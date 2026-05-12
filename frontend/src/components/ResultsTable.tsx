@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, type ClipboardEvent } from "react";
 
+import { parseSpreadsheetGrid } from "../spreadsheet";
 import type { CandidateResult, ObjectiveDefinition, SuggestionRow, VariableDefinition } from "../types";
 
 interface ResultsTableProps {
@@ -10,6 +11,7 @@ interface ResultsTableProps {
   disabled?: boolean;
   onAddManualRows: (count: number) => void;
   onObjectiveChange: (candidateId: string, objectiveName: string, value: string) => void;
+  onPasteRows: (startRowIndex: number, startColumnIndex: number, values: string[][]) => void;
   onSaveRows: () => void;
   onVariableChange: (candidateId: string, variableName: string, value: string) => void;
 }
@@ -22,6 +24,7 @@ export function ResultsTable({
   disabled = false,
   onAddManualRows,
   onObjectiveChange,
+  onPasteRows,
   onSaveRows,
   onVariableChange,
 }: ResultsTableProps) {
@@ -80,7 +83,7 @@ export function ResultsTable({
                 </td>
               </tr>
             ) : (
-              rows.map((row) => (
+              rows.map((row, rowIndex) => (
                 <tr key={row.candidateId}>
                   <td>
                     <strong>{row.candidateId}</strong>
@@ -94,6 +97,7 @@ export function ResultsTable({
                         disabled={disabled || row.status === "submitted"}
                         value={row.variables[variable.name] ?? ""}
                         variable={variable}
+                        onPaste={(text) => onPasteRows(rowIndex, variableIndex(variables, variable.name), parseSpreadsheetGrid(text))}
                         onChange={onVariableChange}
                       />
                     </td>
@@ -106,6 +110,13 @@ export function ResultsTable({
                         inputMode="decimal"
                         type="text"
                         value={row.objectives[objective.name] ?? ""}
+                        onPaste={(event) => {
+                          const text = event.clipboardData.getData("text");
+                          if (isSpreadsheetPaste(text)) {
+                            event.preventDefault();
+                            onPasteRows(rowIndex, variables.length + objectiveIndex(objectives, objective.name), parseSpreadsheetGrid(text));
+                          }
+                        }}
                         onChange={(event) => onObjectiveChange(row.candidateId, objective.name, event.target.value)}
                       />
                     </td>
@@ -136,20 +147,30 @@ function VariableValueInput({
   value,
   variable,
   onChange,
+  onPaste,
 }: {
   candidateId: string;
   disabled: boolean;
   value: string | number | boolean;
   variable: VariableDefinition;
   onChange: (candidateId: string, variableName: string, value: string) => void;
+  onPaste: (text: string) => void;
 }) {
   const label = `${variable.name} for ${candidateId}`;
+  const handlePaste = (event: ClipboardEvent) => {
+    const text = event.clipboardData.getData("text");
+    if (isSpreadsheetPaste(text)) {
+      event.preventDefault();
+      onPaste(text);
+    }
+  };
   if (variable.type === "bool") {
     return (
       <select
         aria-label={label}
         disabled={disabled}
         value={String(value)}
+        onPaste={handlePaste}
         onChange={(event) => onChange(candidateId, variable.name, event.target.value)}
       >
         <option value="">-</option>
@@ -164,6 +185,7 @@ function VariableValueInput({
         aria-label={label}
         disabled={disabled}
         value={String(value)}
+        onPaste={handlePaste}
         onChange={(event) => onChange(candidateId, variable.name, event.target.value)}
       >
         <option value="">-</option>
@@ -182,9 +204,22 @@ function VariableValueInput({
       inputMode={variable.type === "int" ? "numeric" : "decimal"}
       type="text"
       value={String(value)}
+      onPaste={handlePaste}
       onChange={(event) => onChange(candidateId, variable.name, event.target.value)}
     />
   );
+}
+
+function isSpreadsheetPaste(text: string) {
+  return text.includes("\t") || text.includes("\n") || text.includes(",");
+}
+
+function variableIndex(variables: VariableDefinition[], name: string) {
+  return Math.max(0, variables.findIndex((variable) => variable.name === name));
+}
+
+function objectiveIndex(objectives: ObjectiveDefinition[], name: string) {
+  return Math.max(0, objectives.findIndex((objective) => objective.name === name));
 }
 
 function statusTone(status: SuggestionRow["status"]) {

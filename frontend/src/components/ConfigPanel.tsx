@@ -1,3 +1,6 @@
+import type { ClipboardEvent } from "react";
+
+import { parseSpreadsheetGrid } from "../spreadsheet";
 import type { ObjectiveDefinition, ProblemDraft, VariableDefinition, VariableType } from "../types";
 
 interface ConfigPanelProps {
@@ -28,6 +31,36 @@ export function ConfigPanel({ problem, disabled, message, onChange, onAsk }: Con
       current === index ? { ...objective, ...patch } : objective,
     );
     onChange({ ...problem, objectives });
+  };
+
+  const pasteVariables = (startRow: number, startColumn: number, text: string) => {
+    const grid = parseSpreadsheetGrid(text);
+    if (grid.length === 0) {
+      return false;
+    }
+    const nextCount = clampInteger(Math.max(problem.variables.length, startRow + grid.length), 1, 30);
+    const variables = resizeVariables(problem.variables, nextCount);
+    grid.slice(0, nextCount - startRow).forEach((row, rowOffset) => {
+      const index = startRow + rowOffset;
+      variables[index] = applyVariablePaste(variables[index], startColumn, row);
+    });
+    onChange({ ...problem, variables });
+    return true;
+  };
+
+  const pasteObjectives = (startRow: number, startColumn: number, text: string) => {
+    const grid = parseSpreadsheetGrid(text);
+    if (grid.length === 0) {
+      return false;
+    }
+    const nextCount = clampInteger(Math.max(problem.objectives.length, startRow + grid.length), 1, 6);
+    const objectives = resizeObjectives(problem.objectives, nextCount);
+    grid.slice(0, nextCount - startRow).forEach((row, rowOffset) => {
+      const index = startRow + rowOffset;
+      objectives[index] = applyObjectivePaste(objectives[index], startColumn, row);
+    });
+    onChange({ ...problem, objectives });
+    return true;
   };
 
   return (
@@ -100,8 +133,8 @@ export function ConfigPanel({ problem, disabled, message, onChange, onAsk }: Con
       </div>
 
       <div className="definition-stack">
-        <VariableDefinitionTable disabled={disabled} variables={problem.variables} onChange={updateVariable} />
-        <ObjectiveDefinitionTable disabled={disabled} objectives={problem.objectives} onChange={updateObjective} />
+        <VariableDefinitionTable disabled={disabled} variables={problem.variables} onChange={updateVariable} onPaste={pasteVariables} />
+        <ObjectiveDefinitionTable disabled={disabled} objectives={problem.objectives} onChange={updateObjective} onPaste={pasteObjectives} />
       </div>
 
       <div className="action-row">
@@ -119,11 +152,22 @@ function VariableDefinitionTable({
   disabled,
   variables,
   onChange,
+  onPaste,
 }: {
   disabled: boolean;
   variables: VariableDefinition[];
   onChange: (index: number, patch: Partial<VariableDefinition>) => void;
+  onPaste: (startRow: number, startColumn: number, text: string) => boolean;
 }) {
+  const handlePaste = (event: ClipboardEvent, row: number, column: number) => {
+    const text = event.clipboardData.getData("text");
+    if (text.includes("\t") || text.includes("\n") || text.includes(",")) {
+      if (onPaste(row, column, text)) {
+        event.preventDefault();
+      }
+    }
+  };
+
   return (
     <div className="definition-block">
       <h3>Parameters</h3>
@@ -146,6 +190,7 @@ function VariableDefinitionTable({
                     aria-label={`Parameter ${index + 1} name`}
                     disabled={disabled}
                     value={variable.name}
+                    onPaste={(event) => handlePaste(event, index, 0)}
                     onChange={(event) => onChange(index, { name: event.target.value })}
                   />
                 </td>
@@ -154,6 +199,7 @@ function VariableDefinitionTable({
                     aria-label={`Parameter ${index + 1} type`}
                     disabled={disabled}
                     value={variable.type}
+                    onPaste={(event) => handlePaste(event, index, 1)}
                     onChange={(event) => onChange(index, { type: event.target.value as VariableType })}
                   >
                     <option value="float">float</option>
@@ -168,6 +214,7 @@ function VariableDefinitionTable({
                     disabled={disabled || variable.type === "bool" || variable.type === "categorical"}
                     type="number"
                     value={variable.lower ?? 0}
+                    onPaste={(event) => handlePaste(event, index, 2)}
                     onChange={(event) => onChange(index, { lower: Number(event.target.value) })}
                   />
                 </td>
@@ -177,6 +224,7 @@ function VariableDefinitionTable({
                     disabled={disabled || variable.type === "bool" || variable.type === "categorical"}
                     type="number"
                     value={variable.upper ?? 1}
+                    onPaste={(event) => handlePaste(event, index, 3)}
                     onChange={(event) => onChange(index, { upper: Number(event.target.value) })}
                   />
                 </td>
@@ -185,6 +233,7 @@ function VariableDefinitionTable({
                     aria-label={`${variable.name} scale`}
                     disabled={disabled || variable.type === "bool" || variable.type === "categorical"}
                     value={variable.scale}
+                    onPaste={(event) => handlePaste(event, index, 4)}
                     onChange={(event) => onChange(index, { scale: event.target.value as "linear" | "log" })}
                   >
                     <option value="linear">linear</option>
@@ -204,11 +253,22 @@ function ObjectiveDefinitionTable({
   disabled,
   objectives,
   onChange,
+  onPaste,
 }: {
   disabled: boolean;
   objectives: ObjectiveDefinition[];
   onChange: (index: number, patch: Partial<ObjectiveDefinition>) => void;
+  onPaste: (startRow: number, startColumn: number, text: string) => boolean;
 }) {
+  const handlePaste = (event: ClipboardEvent, row: number, column: number) => {
+    const text = event.clipboardData.getData("text");
+    if (text.includes("\t") || text.includes("\n") || text.includes(",")) {
+      if (onPaste(row, column, text)) {
+        event.preventDefault();
+      }
+    }
+  };
+
   return (
     <div className="definition-block">
       <h3>Objectives</h3>
@@ -230,6 +290,7 @@ function ObjectiveDefinitionTable({
                     aria-label={`Objective ${index + 1} name`}
                     disabled={disabled}
                     value={objective.name}
+                    onPaste={(event) => handlePaste(event, index, 0)}
                     onChange={(event) => onChange(index, { name: event.target.value })}
                   />
                 </td>
@@ -238,6 +299,7 @@ function ObjectiveDefinitionTable({
                     aria-label={`${objective.name} direction`}
                     disabled={disabled}
                     value={objective.direction}
+                    onPaste={(event) => handlePaste(event, index, 1)}
                     onChange={(event) => onChange(index, { direction: event.target.value as "min" | "max" })}
                   >
                     <option value="min">min</option>
@@ -249,6 +311,7 @@ function ObjectiveDefinitionTable({
                     aria-label={`${objective.name} unit`}
                     disabled={disabled}
                     value={objective.unit ?? ""}
+                    onPaste={(event) => handlePaste(event, index, 2)}
                     onChange={(event) => onChange(index, { unit: event.target.value })}
                   />
                 </td>
@@ -258,6 +321,7 @@ function ObjectiveDefinitionTable({
                     disabled={disabled}
                     type="number"
                     value={objective.threshold ?? ""}
+                    onPaste={(event) => handlePaste(event, index, 3)}
                     onChange={(event) =>
                       onChange(index, {
                         threshold: event.target.value === "" ? undefined : Number(event.target.value),
@@ -288,6 +352,64 @@ function defaultVariable(index: number): VariableDefinition {
 
 function defaultObjective(index: number): ObjectiveDefinition {
   return { name: `f${index + 1}`, direction: "min" };
+}
+
+function applyVariablePaste(variable: VariableDefinition, startColumn: number, row: string[]): VariableDefinition {
+  return row.reduce((current, rawValue, offset) => {
+    const value = rawValue.trim();
+    const column = startColumn + offset;
+    if (column === 0) {
+      return value === "" ? current : { ...current, name: value };
+    }
+    if (column === 1) {
+      return isVariableType(value) ? { ...current, type: value } : current;
+    }
+    if (column === 2) {
+      const lower = optionalNumber(value);
+      return lower.valid ? { ...current, lower: lower.value } : current;
+    }
+    if (column === 3) {
+      const upper = optionalNumber(value);
+      return upper.valid ? { ...current, upper: upper.value } : current;
+    }
+    if (column === 4) {
+      return value === "linear" || value === "log" ? { ...current, scale: value } : current;
+    }
+    return current;
+  }, variable);
+}
+
+function applyObjectivePaste(objective: ObjectiveDefinition, startColumn: number, row: string[]): ObjectiveDefinition {
+  return row.reduce((current, rawValue, offset) => {
+    const value = rawValue.trim();
+    const column = startColumn + offset;
+    if (column === 0) {
+      return value === "" ? current : { ...current, name: value };
+    }
+    if (column === 1) {
+      return value === "min" || value === "max" ? { ...current, direction: value } : current;
+    }
+    if (column === 2) {
+      return { ...current, unit: value };
+    }
+    if (column === 3) {
+      const threshold = optionalNumber(value);
+      return threshold.valid ? { ...current, threshold: threshold.value } : current;
+    }
+    return current;
+  }, objective);
+}
+
+function isVariableType(value: string): value is VariableType {
+  return value === "float" || value === "int" || value === "bool" || value === "categorical";
+}
+
+function optionalNumber(value: string): { valid: true; value: number | undefined } | { valid: false } {
+  if (value === "") {
+    return { valid: true, value: undefined };
+  }
+  const number = Number(value);
+  return Number.isFinite(number) ? { valid: true, value: number } : { valid: false };
 }
 
 function clampInteger(value: number, lower: number, upper: number): number {

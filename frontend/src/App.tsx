@@ -189,6 +189,58 @@ export default function App() {
     setMessage(`${safeCount} manual data row(s) added. Fill parameter and objective values, then save completed rows.`);
   };
 
+  const handlePasteRows = (startRowIndex: number, startColumnIndex: number, values: string[][]) => {
+    const pastedRows = values.filter((row) => row.some((cell) => cell.trim() !== ""));
+    if (pastedRows.length === 0) {
+      return;
+    }
+    setRows((current) => {
+      const nextRows = [...current];
+      const rowsNeeded = Math.max(0, startRowIndex + pastedRows.length - nextRows.length);
+      if (rowsNeeded > 0) {
+        const startIndex = nextManualIndex(nextRows, observations);
+        nextRows.push(...Array.from({ length: rowsNeeded }, (_, offset) => createManualRow(problem, startIndex + offset)));
+      }
+
+      const columns = [
+        ...problem.variables.map((variable) => ({ kind: "variable" as const, name: variable.name })),
+        ...problem.objectives.map((objective) => ({ kind: "objective" as const, name: objective.name })),
+      ];
+      const objectiveNames = problem.objectives.map((objective) => objective.name);
+
+      pastedRows.forEach((rowValues, rowOffset) => {
+        const rowIndex = startRowIndex + rowOffset;
+        const row = nextRows[rowIndex];
+        if (!row || row.status === "submitted") {
+          return;
+        }
+        const variables = { ...row.variables };
+        const objectives = { ...row.objectives };
+        rowValues.forEach((rawValue, columnOffset) => {
+          const column = columns[startColumnIndex + columnOffset];
+          if (!column) {
+            return;
+          }
+          const value = rawValue.trim();
+          if (column.kind === "variable") {
+            variables[column.name] = value;
+          } else {
+            objectives[column.name] = value;
+          }
+        });
+        nextRows[rowIndex] = {
+          ...row,
+          variables,
+          objectives,
+          status: rowStatus(variables, objectives, problem.variables, objectiveNames, row.source),
+        };
+      });
+
+      return nextRows;
+    });
+    setMessage(`${pastedRows.length} spreadsheet row(s) pasted. Review row status, then save completed rows.`);
+  };
+
   return (
     <main className="app-shell">
       <header className="app-header">
@@ -239,6 +291,7 @@ export default function App() {
             disabled={status === "asking"}
             onAddManualRows={handleAddManualRows}
             onObjectiveChange={handleObjectiveChange}
+            onPasteRows={handlePasteRows}
             onSaveRows={handleSaveRows}
             onVariableChange={handleVariableChange}
           />
