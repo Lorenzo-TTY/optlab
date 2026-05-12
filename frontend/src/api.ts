@@ -7,6 +7,7 @@ import type {
   ProblemPayload,
   StartJobResponse,
 } from "./types";
+import type { ProjectSnapshot } from "./projectStorage";
 
 export async function validateProblem(problem: ProblemDraft): Promise<ConfigValidationResponse> {
   const response = await fetch("/api/configs/validate", {
@@ -51,6 +52,25 @@ export async function suggestCandidates(
   }
 
   return response.json() as Promise<AdvisorSuggestResponse>;
+}
+
+export async function loadProjectSnapshot(): Promise<unknown> {
+  const response = await fetch("/api/projects");
+  if (!response.ok) {
+    throw new Error("Unable to load saved projects");
+  }
+  return response.json() as Promise<unknown>;
+}
+
+export async function saveProjectSnapshot(snapshot: ProjectSnapshot): Promise<void> {
+  const response = await fetch("/api/projects", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(snapshot),
+  });
+  if (!response.ok) {
+    throw new Error("Unable to save projects to the local server");
+  }
 }
 
 export function toProblemPayload(problem: ProblemDraft): ProblemPayload {

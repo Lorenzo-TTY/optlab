@@ -173,6 +173,27 @@ class SQLiteStore:
             )
         return output.getvalue()
 
+    def get_project_state(self) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT payload_json FROM project_state WHERE key = 'default'"
+            ).fetchone()
+        return _loads(row["payload_json"], {}) if row else None
+
+    def save_project_state(self, payload: dict[str, Any]) -> None:
+        now = time.time()
+        with self._lock, self._conn:
+            self._conn.execute(
+                """
+                INSERT INTO project_state (key, payload_json, updated_at)
+                VALUES ('default', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    payload_json = excluded.payload_json,
+                    updated_at = excluded.updated_at
+                """,
+                (_json(payload), now),
+            )
+
     def _read_rows(self, table: str, job_id: str) -> list[dict[str, Any]]:
         with self._lock:
             rows = self._conn.execute(
@@ -242,6 +263,11 @@ class SQLiteStore:
                     objectives_json TEXT NOT NULL,
                     constraints_json TEXT NOT NULL,
                     feasible INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS project_state (
+                    key TEXT PRIMARY KEY,
+                    payload_json TEXT NOT NULL,
+                    updated_at REAL NOT NULL
                 );
                 """
             )

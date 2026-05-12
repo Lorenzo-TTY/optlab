@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { suggestCandidates } from "./api";
+import { loadProjectSnapshot, saveProjectSnapshot, suggestCandidates } from "./api";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { OptimizationResults } from "./components/OptimizationResults";
 import { ParetoView } from "./components/ParetoView";
@@ -9,6 +9,8 @@ import { ResultsTable } from "./components/ResultsTable";
 import { StatusPanel } from "./components/StatusPanel";
 import {
   createProject,
+  coerceProjectSnapshot,
+  createProjectSnapshot,
   loadActiveProjectId,
   loadProjects,
   saveActiveProjectId,
@@ -45,6 +47,7 @@ const initialProblem: ProblemDraft = {
 export default function App() {
   const [projects, setProjects] = useState<OptimizationProject[]>(() => loadProjects(initialProblem));
   const [activeProjectId, setActiveProjectId] = useState(() => loadActiveProjectId(projects));
+  const [serverProjectStore, setServerProjectStore] = useState<"checking" | "available" | "unavailable">("checking");
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? projects[0];
   const [problem, setProblem] = useState<ProblemDraft>(activeProject.problem);
   const [status, setStatus] = useState<AdvisorStatus>("idle");
@@ -69,8 +72,56 @@ export default function App() {
   }, [activeProjectId]);
 
   useEffect(() => {
+    let cancelled = false;
+    loadProjectSnapshot()
+      .then((rawSnapshot) => {
+        if (cancelled) {
+          return;
+        }
+        const snapshot = coerceProjectSnapshot(rawSnapshot, initialProblem);
+        if (snapshot) {
+          loadProjectState(snapshot.projects, snapshot.activeProjectId);
+          const projectName = snapshot.projects.find((project) => project.id === snapshot.activeProjectId)?.name ?? "saved project";
+          setMessage(`Loaded ${projectName} from local server storage.`);
+        }
+        setServerProjectStore("available");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setServerProjectStore("unavailable");
+          setMessage("Local server project store is unavailable. Using this browser's saved project cache for now.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (serverProjectStore !== "available") {
+      return;
+    }
+    const snapshot = createProjectSnapshot(projects, activeProjectId);
+    void saveProjectSnapshot(snapshot).catch(() => {
+      setServerProjectStore("unavailable");
+      setMessage("Local server project save failed. Browser cache still has the current project state.");
+    });
+  }, [activeProjectId, projects, serverProjectStore]);
+
+  useEffect(() => {
     updateActiveProject({ problem, rows, observations, advisor });
   }, [problem, rows, observations, advisor]);
+
+  const loadProjectState = (nextProjects: OptimizationProject[], nextActiveProjectId: string) => {
+    const nextProject = nextProjects.find((project) => project.id === nextActiveProjectId) ?? nextProjects[0];
+    setProjects(nextProjects);
+    setActiveProjectId(nextProject.id);
+    setProblem(nextProject.problem);
+    setRows(nextProject.rows);
+    setObservations(nextProject.observations);
+    setAdvisor(nextProject.advisor);
+    setStatus("idle");
+  };
 
   const selectProject = (projectId: string) => {
     const nextProject = projects.find((project) => project.id === projectId);
@@ -108,14 +159,26 @@ export default function App() {
     );
   };
 
-  const handleSaveProject = () => {
+  const handleSaveProject = async () => {
     const updatedProjects = updateProjectList(projects, activeProjectId, { problem, rows, observations, advisor });
     setProjects(updatedProjects);
-    if (saveProjects(updatedProjects) && saveActiveProjectId(activeProjectId)) {
-      setMessage(`${activeProject.name || "Untitled project"} saved locally. It will be restored when you reopen this browser.`);
-      return;
+    const browserSaved = saveProjects(updatedProjects) && saveActiveProjectId(activeProjectId);
+    if (serverProjectStore === "available") {
+      try {
+        await saveProjectSnapshot(createProjectSnapshot(updatedProjects, activeProjectId));
+        setMessage(`${activeProject.name || "Untitled project"} saved to the local server and browser cache.`);
+        return;
+      } catch {
+        setServerProjectStore("unavailable");
+        setMessage("Local server project save failed. Browser cache still has the current project state.");
+        return;
+      }
     }
-    setMessage("Local project save failed. Current work remains in memory, but this browser did not persist it.");
+    if (browserSaved) {
+      setMessage(`${activeProject.name || "Untitled project"} saved in this browser cache. Restart the local server to enable cross-entry restore.`);
+    } else {
+      setMessage("Local project save failed. Current work remains in memory, but this browser did not persist it.");
+    }
   };
 
   const askWithObservations = async (nextObservations: CandidateResult[], baseRows: SuggestionRow[]) => {

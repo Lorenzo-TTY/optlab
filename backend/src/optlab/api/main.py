@@ -102,6 +102,31 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
         except (ValidationError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.get("/api/projects")
+    def get_projects() -> dict[str, Any]:
+        return store.get_project_state() or {
+            "schemaVersion": 1,
+            "projects": [],
+            "activeProjectId": "",
+        }
+
+    @app.put("/api/projects")
+    def save_projects(payload: dict[str, Any]) -> dict[str, bool]:
+        projects = payload.get("projects")
+        active_project_id = payload.get("activeProjectId", "")
+        if not isinstance(projects, list):
+            raise HTTPException(status_code=400, detail="projects must be a list")
+        if active_project_id is not None and not isinstance(active_project_id, str):
+            raise HTTPException(status_code=400, detail="activeProjectId must be a string")
+        store.save_project_state(
+            {
+                "schemaVersion": 1,
+                "projects": projects,
+                "activeProjectId": active_project_id or "",
+            }
+        )
+        return {"saved": True}
+
     @app.get("/api/jobs/{job_id}")
     def get_job(job_id: str) -> dict[str, Any]:
         job = store.get_job(job_id)

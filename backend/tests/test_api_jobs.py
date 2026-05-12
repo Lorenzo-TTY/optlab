@@ -45,6 +45,55 @@ def test_validate_config_accepts_valid_problem(tmp_path) -> None:
     assert response.json()["summary"]["objectives"] == 2
 
 
+def test_project_snapshot_persists_across_app_restart(tmp_path) -> None:
+    db_path = tmp_path / "optlab.db"
+    snapshot = {
+        "schemaVersion": 1,
+        "activeProjectId": "project_saved",
+        "projects": [
+            {
+                "schemaVersion": 1,
+                "id": "project_saved",
+                "name": "Restart-safe sweep",
+                "problem": {
+                    "variables": [{"name": "x1", "type": "float", "lower": 0, "upper": 1, "scale": "linear"}],
+                    "objectives": [{"name": "f1", "direction": "min"}],
+                    "evaluator": {"type": "builtin", "name": "manual"},
+                    "budget": {"max_evals": 200, "seed": 11},
+                    "algorithm": "auto",
+                    "batchSize": 1,
+                },
+                "rows": [],
+                "observations": [
+                    {
+                        "candidateId": "manual_000001",
+                        "generation": 0,
+                        "variables": {"x1": 0.2},
+                        "objectives": {"f1": 0.4},
+                        "constraints": {},
+                        "feasible": True,
+                        "metadata": {"source": "manual-dataset"},
+                    }
+                ],
+                "advisor": None,
+                "createdAt": "2026-05-12T00:00:00.000Z",
+                "updatedAt": "2026-05-12T00:00:00.000Z",
+            }
+        ],
+    }
+    client = TestClient(create_app(db_path=db_path))
+
+    save_response = client.put("/api/projects", json=snapshot)
+
+    assert save_response.status_code == 200
+    restarted_client = TestClient(create_app(db_path=db_path))
+    restored = restarted_client.get("/api/projects")
+    assert restored.status_code == 200
+    assert restored.json()["activeProjectId"] == "project_saved"
+    assert restored.json()["projects"][0]["name"] == "Restart-safe sweep"
+    assert restored.json()["projects"][0]["observations"][0]["objectives"] == {"f1": 0.4}
+
+
 def test_job_lifecycle_results_and_exports(tmp_path) -> None:
     app = create_app(db_path=tmp_path / "optlab.db")
     client = TestClient(app)

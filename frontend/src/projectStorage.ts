@@ -16,6 +16,12 @@ export interface OptimizationProject {
   updatedAt: string;
 }
 
+export interface ProjectSnapshot {
+  schemaVersion: 1;
+  projects: OptimizationProject[];
+  activeProjectId: string;
+}
+
 export function createProject(problem: ProblemDraft, name: string, now = new Date()): OptimizationProject {
   const timestamp = now.toISOString();
   return {
@@ -40,15 +46,43 @@ export function loadProjects(fallbackProblem: ProblemDraft): OptimizationProject
     if (!raw) {
       return [createProject(fallbackProblem, "Project 1")];
     }
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [createProject(fallbackProblem, "Project 1")];
-    }
-    const projects = parsed.map((item) => coerceProject(item, fallbackProblem)).filter(Boolean) as OptimizationProject[];
+    const projects = coerceProjects(JSON.parse(raw), fallbackProblem);
     return projects.length > 0 ? projects : [createProject(fallbackProblem, "Project 1")];
   } catch {
     return [createProject(fallbackProblem, "Project 1")];
   }
+}
+
+export function loadStoredProjectSnapshot(fallbackProblem: ProblemDraft): ProjectSnapshot {
+  const projects = loadProjects(fallbackProblem);
+  return createProjectSnapshot(projects, loadActiveProjectId(projects));
+}
+
+export function createProjectSnapshot(projects: OptimizationProject[], activeProjectId: string): ProjectSnapshot {
+  return {
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    projects: structuredCloneFallback(projects),
+    activeProjectId,
+  };
+}
+
+export function coerceProjectSnapshot(item: unknown, fallbackProblem: ProblemDraft): ProjectSnapshot | null {
+  if (!item || typeof item !== "object") {
+    return null;
+  }
+  const candidate = item as Partial<ProjectSnapshot>;
+  const projects = coerceProjects(candidate.projects, fallbackProblem);
+  if (candidate.schemaVersion !== PROJECT_SCHEMA_VERSION || projects.length === 0) {
+    return null;
+  }
+  const activeProjectId = projects.some((project) => project.id === candidate.activeProjectId)
+    ? String(candidate.activeProjectId)
+    : projects[0].id;
+  return {
+    schemaVersion: PROJECT_SCHEMA_VERSION,
+    projects,
+    activeProjectId,
+  };
 }
 
 export function saveProjects(projects: OptimizationProject[]) {
@@ -89,6 +123,13 @@ export function saveActiveProjectId(projectId: string) {
 
 export function touchProject(project: OptimizationProject, now = new Date()): OptimizationProject {
   return { ...project, updatedAt: now.toISOString() };
+}
+
+function coerceProjects(items: unknown, fallbackProblem: ProblemDraft): OptimizationProject[] {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items.map((item) => coerceProject(item, fallbackProblem)).filter(Boolean) as OptimizationProject[];
 }
 
 function coerceProject(item: unknown, fallbackProblem: ProblemDraft): OptimizationProject | null {

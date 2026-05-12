@@ -56,16 +56,28 @@ const secondAdvisorResponse = {
   },
 };
 
+let serverProjectSnapshot: unknown;
+
 describe("OptLab ask/tell UI", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(new Response(JSON.stringify(firstAdvisorResponse)))
-        .mockResolvedValueOnce(new Response(JSON.stringify(secondAdvisorResponse))),
-    );
+    serverProjectSnapshot = { schemaVersion: 1, projects: [], activeProjectId: "" };
+    const advisorResponses = [firstAdvisorResponse, secondAdvisorResponse];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url === "/api/projects" && method === "GET") {
+        return new Response(JSON.stringify(serverProjectSnapshot));
+      }
+      if (url === "/api/projects" && method === "PUT") {
+        serverProjectSnapshot = JSON.parse(String(init?.body ?? "{}"));
+        return new Response(JSON.stringify({ saved: true }));
+      }
+      if (url === "/api/advisor/suggest") {
+        return new Response(JSON.stringify(advisorResponses.shift() ?? secondAdvisorResponse));
+      }
+      return new Response(JSON.stringify({}), { status: 404 });
+    }));
   });
 
   afterEach(() => {
@@ -107,7 +119,7 @@ describe("OptLab ask/tell UI", () => {
 
     expectSavedObservations(1);
     expect(within(candidateRow("manual_000001")).getByText("submitted")).toBeInTheDocument();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(advisorCalls()).toHaveLength(0);
   });
 
   it("keeps incomplete or out-of-range manual rows from being saved", async () => {
@@ -123,7 +135,7 @@ describe("OptLab ask/tell UI", () => {
 
     expect(within(candidateRow("manual_000001")).getByText("invalid")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save completed rows" })).toBeDisabled();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(advisorCalls()).toHaveLength(0);
   });
 
   it("includes saved manual observations when requesting an optional advisor suggestion", async () => {
@@ -140,8 +152,8 @@ describe("OptLab ask/tell UI", () => {
     await userEvent.click(screen.getByRole("button", { name: "Get optional algorithm suggestion" }));
 
     expect(await within(resultsEntryTable()).findByText("suggest_000001")).toBeInTheDocument();
-    expect(fetch).toHaveBeenCalledTimes(1);
-    const body = JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body));
+    expect(advisorCalls()).toHaveLength(1);
+    const body = JSON.parse(String(advisorCalls()[0][1]?.body));
     expect(body.observations).toEqual([
       expect.objectContaining({
         candidateId: "manual_000001",
@@ -168,7 +180,7 @@ describe("OptLab ask/tell UI", () => {
 
     expect(await within(resultsEntryTable()).findByText("suggest_000001")).toBeInTheDocument();
     expectSavedObservations(0);
-    const body = JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body));
+    const body = JSON.parse(String(advisorCalls()[0][1]?.body));
     expect(body.observations).toEqual([]);
     expect(within(candidateRow("manual_000001")).getByText("complete")).toBeInTheDocument();
   });
@@ -262,6 +274,64 @@ describe("OptLab ask/tell UI", () => {
     expect(within(candidateRow("manual_000001")).getByText("draft")).toBeInTheDocument();
   });
 
+  it("restores saved projects from the local server when browser cache is empty", async () => {
+    serverProjectSnapshot = {
+      schemaVersion: 1,
+      activeProjectId: "project_server",
+      projects: [
+        {
+          schemaVersion: 1,
+          id: "project_server",
+          name: "Server sweep",
+          problem: {
+            variables: [
+              { name: "x1", type: "float", lower: 0, upper: 1, scale: "linear" },
+              { name: "x2", type: "float", lower: 0, upper: 1, scale: "linear" },
+            ],
+            objectives: [
+              { name: "f1", direction: "min" },
+              { name: "f2", direction: "min" },
+            ],
+            evaluator: { type: "builtin", name: "manual" },
+            budget: { max_evals: 200, seed: 11 },
+            algorithm: "auto",
+            batchSize: 1,
+          },
+          rows: [
+            {
+              candidateId: "manual_000001",
+              source: "manual",
+              variables: { x1: "0.3", x2: "0.7" },
+              objectives: { f1: "0.2", f2: "0.5" },
+              status: "submitted",
+              reason: "User-entered candidate; algorithm suggestions are optional references.",
+            },
+          ],
+          observations: [
+            {
+              candidateId: "manual_000001",
+              generation: 0,
+              variables: { x1: 0.3, x2: 0.7 },
+              objectives: { f1: 0.2, f2: 0.5 },
+              constraints: {},
+              feasible: true,
+              metadata: { source: "manual-dataset" },
+            },
+          ],
+          advisor: null,
+          createdAt: "2026-05-12T00:00:00.000Z",
+          updatedAt: "2026-05-12T00:00:00.000Z",
+        },
+      ],
+    };
+
+    render(<App />);
+
+    expect(await screen.findByDisplayValue("Server sweep")).toBeInTheDocument();
+    expectSavedObservations(1);
+    expect(within(candidateRow("manual_000001")).getByText("submitted")).toBeInTheDocument();
+  });
+
   it("falls back to a fresh project when stored project data is corrupt", () => {
     window.localStorage.setItem(PROJECT_STORAGE_KEY, "{not valid json");
     window.localStorage.setItem(ACTIVE_PROJECT_STORAGE_KEY, "missing_project");
@@ -342,8 +412,8 @@ describe("OptLab ask/tell UI", () => {
     await userEvent.click(screen.getByRole("button", { name: "Get optional algorithm suggestion" }));
 
     expect(await within(resultsEntryTable()).findByText("suggest_000001")).toBeInTheDocument();
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/advisor/suggest",
+    expect(advisorCalls()[0][0]).toBe("/api/advisor/suggest");
+    expect(advisorCalls()[0][1]).toEqual(
       expect.objectContaining({
         method: "POST",
         body: expect.stringContaining('"batchSize":1'),
@@ -354,7 +424,7 @@ describe("OptLab ask/tell UI", () => {
     await userEvent.type(screen.getByLabelText("f2 for suggest_000001"), "0.88");
     await userEvent.click(screen.getByRole("button", { name: "Save completed rows" }));
 
-    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(advisorCalls()).toHaveLength(1));
     expectSavedObservations(1);
     expect(within(candidateRow("suggest_000001")).getByText("submitted")).toBeInTheDocument();
     expect(screen.queryByText("suggest_000002")).not.toBeInTheDocument();
@@ -448,6 +518,12 @@ function recommendationStrip(summary: HTMLElement) {
     throw new Error("Could not find recommendation strip");
   }
   return strip;
+}
+
+function advisorCalls() {
+  return vi
+    .mocked(fetch)
+    .mock.calls.filter(([input]) => String(input) === "/api/advisor/suggest") as Array<[RequestInfo | URL, RequestInit]>;
 }
 
 function pasteSpreadsheet(target: HTMLElement, text: string) {
